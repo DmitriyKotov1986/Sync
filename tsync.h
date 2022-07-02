@@ -50,7 +50,9 @@ class TSync : public QObject
         QString Category; //категория
         TTypeChange isChange ;
         TOldFile OldFiles; //множество уже обработанных файлов
-        quint64 LastID;
+        quint64 LastID = 0;
+        bool clearDirAfterSync = false;
+        bool ignoreEmptyFile = false;
     } TTargetInfo;
 
 public:
@@ -58,7 +60,6 @@ public:
     ~TSync();
 
 private:
-    TConsole Console;
     QSettings *Config;
     QSqlDatabase DB;
     QTimer UpdateTimer;
@@ -94,7 +95,6 @@ public slots:
     void onStart();
 
 private slots:
-    void onGetCommand(const QString &cmd);
     void onHTTPGetAnswer(const QByteArray &Answer);
     void onStartGetData();
     void onSendLogMsg(uint16_t Category, const QString &Msg);

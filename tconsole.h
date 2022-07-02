@@ -10,7 +10,6 @@
 #include <QObject>
 #include <QThread>
 #include <QTextStream>
-#include <QtCore5Compat/QTextCodec>
 
 class TConsole : public QThread
 {

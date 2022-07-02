@@ -11,7 +11,6 @@ CONFIG -= app_bundle
 
 SOURCES += \
         main.cpp \
-        tconsole.cpp \
         thttpquery.cpp \
         tsync.cpp
 
@@ -21,6 +20,5 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 
 HEADERS += \
-    tconsole.h \
     thttpquery.h \
     tsync.h

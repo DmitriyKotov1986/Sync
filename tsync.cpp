@@ -10,12 +10,7 @@
 
 TSync::TSync(const QString &ConfigFileName, QObject *parent)
     : QObject(parent)
-    , Console(this)
 {
-
-    QObject::connect(&Console, SIGNAL(GetCommand(const QString &)), this, SLOT(onGetCommand(const QString &)));
-    Console.start(QThread::LowPriority);
-
     Config = new QSettings(ConfigFileName, QSettings::IniFormat);
     if (Config->status() != QSettings::NoError) {
         qCritical() << "Cannot read file of configuration.";
@@ -99,11 +94,13 @@ void TSync::onStart()
         }
         tmp.Category = Config->value("Category", "n/a").toString();
         tmp.LastID = Config->value("LastID", "0").toULongLong();
+        tmp.clearDirAfterSync = Config->value("ClearDirAfterSync", false).toBool();
+        tmp.ignoreEmptyFile = Config->value("IgnoreEmptyFile", false).toBool();
         Targets.insert(TargetName, tmp);
         CategoryToTarget.insert(tmp.Category, TargetName);
         Config->endGroup();
         if (DebugMode) {
-            qDebug() << "Add target for monitoring: " << TargetName;
+            qDebug() << "Add target for monitoring: " << TargetName << tmp.LastID << tmp.ignoreEmptyFile <<  tmp.clearDirAfterSync;
         }
     }
 
@@ -278,7 +275,6 @@ void TSync::onStartGetData()
     }
     for (const auto& TargetName: Targets.keys()) {
         TTargetInfo& CurrentTargetInfo = Targets[TargetName];
-     //   qDebug() << "TargetName: " << TargetName;
 
         if (CurrentTargetInfo.isChange == NO_CHANGE) continue;
         else if (CurrentTargetInfo.isChange == LOAD_FROM_SERVER) continue;
@@ -296,21 +292,37 @@ void TSync::onStartGetData()
         else if (CurrentTargetInfo.isChange == CHANGE_DIR) {
             //получаем список файлов в директории
             QDir Dir(TargetName);
-            Dir.setFilter(QDir::Files | QDir::Hidden | QDir::NoSymLinks);
-            Dir.setSorting(QDir::Time | QDir::Reversed);
 
-            TOldFile CurrentFileOnDir;
-            for (const auto &Item : Dir.entryInfoList()) {
-                 CurrentFileOnDir.insert(qMakePair(Item.absoluteFilePath(), TimeAccuracy(Item.fileTime(QFile::FileModificationTime))));
-            }
+            if (!Dir.isEmpty(QDir::NoDotAndDotDot)) {
+                Dir.setFilter(QDir::Files | QDir::Hidden | QDir::NoSymLinks);
+                Dir.setSorting(QDir::Time | QDir::Reversed);
 
-            //все файлы которые поменялись в директории загружаем в БД
-            TOldFile tmp = CurrentFileOnDir.subtract(CurrentTargetInfo.OldFiles);
-            for (const auto &Item : tmp) {
-                QFileInfo FileInfo(Item.first); //получаем информацию о файле
-                AddFileToDB(FileInfo, CurrentTargetInfo.Category);
-                //добавляем файл в очередь для загрузки
-                CurrentTargetInfo.OldFiles.insert(qMakePair(FileInfo.absoluteFilePath(), TimeAccuracy(FileInfo.fileTime(QFileDevice::FileModificationTime))));                
+                TOldFile CurrentFileOnDir;
+                for (const auto &Item : Dir.entryInfoList()) {
+                     CurrentFileOnDir.insert(qMakePair(Item.absoluteFilePath(), TimeAccuracy(Item.fileTime(QFile::FileModificationTime))));
+                }
+
+                //все файлы которые поменялись в директории загружаем в БД
+                TOldFile tmp = CurrentFileOnDir.subtract(CurrentTargetInfo.OldFiles);
+                for (const auto& Item : tmp) {
+                    QFileInfo FileInfo(Item.first); //получаем информацию о файле
+                    qDebug() << "file:" << FileInfo.absoluteFilePath();
+                    if (!CurrentTargetInfo.ignoreEmptyFile || (FileInfo.size() != 0)) {
+                        AddFileToDB(FileInfo, CurrentTargetInfo.Category);
+                        //добавляем файл в очередь для загрузки
+                        CurrentTargetInfo.OldFiles.insert(qMakePair(FileInfo.absoluteFilePath(), TimeAccuracy(FileInfo.fileTime(QFileDevice::FileModificationTime))));
+                    }
+                    else {
+                        SendLogMsg(MSG_CODE::CODE_INFORMATION, "File is empty. Ignored. File name: " + FileInfo.absoluteFilePath());
+                    }
+                }
+                //если нужно - удаляем все файлы из директории
+                if (CurrentTargetInfo.clearDirAfterSync) {
+                    qDebug() << "-->Clear directory";
+                    while (Dir.entryList().size() > 0) {
+                        Dir.remove(Dir.entryList().first());
+                    }
+                }
             }
         }
         //сбрасываем флаг изменения
@@ -332,27 +344,6 @@ void TSync::onStartGetData()
 void TSync::onSendLogMsg(uint16_t Category, const QString &Msg)
 {
     SendLogMsg(Category, Msg);
-}
-
-
-
-void TSync::onGetCommand(const QString &cmd)
-{
-    if (cmd == "QUIT\n") {   //если пришла команда QUIT - то выходим
-        qDebug() << "OK";
-        emit Finished();
-    }
-    else if (cmd == "TEST\n") {   // Тестируем текущее состояние программы
-        qDebug() << "OK";
-    }
-    else if (cmd == "STOP\n") {   //останавливаем обновление данных
-        UpdateTimer.stop();
-        qDebug() << "OK";
-    }
-    else if (cmd == "START\n") {   //запускаем обновление данных
-        UpdateTimer.start();
-        qDebug() << "OK";
-    }
 }
 
 void TSync::onHTTPGetAnswer(const QByteArray &Answer)
@@ -496,6 +487,7 @@ void TSync::AddFileToDB(const QFileInfo& FileInfo, const QString& Category)
     if (DebugMode) {
         qDebug() << "->Add file DB: " << FileInfo.absoluteFilePath();
     }
+
     //Сохраняем файл в БД
     QByteArray Body;
 
