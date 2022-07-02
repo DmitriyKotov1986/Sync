@@ -11,7 +11,7 @@ int main(int argc, char *argv[])
     QCoreApplication::setOrganizationName("OOO 'SA'");
     QCoreApplication::setApplicationVersion("0.1a");
 
-     setlocale(LC_CTYPE, ""); //настраиваем локаль
+    setlocale(LC_CTYPE, ""); //настраиваем локаль
 
     //Создаем парсер параметров командной строки
     QCommandLineParser parser;

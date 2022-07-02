@@ -293,7 +293,7 @@ void TSync::onStartGetData()
             //получаем список файлов в директории
             QDir Dir(TargetName);
 
-            if (!Dir.isEmpty(QDir::NoDotAndDotDot)) {
+            if (!Dir.isEmpty()) {
                 Dir.setFilter(QDir::Files | QDir::Hidden | QDir::NoSymLinks);
                 Dir.setSorting(QDir::Time | QDir::Reversed);
 
@@ -306,22 +306,23 @@ void TSync::onStartGetData()
                 TOldFile tmp = CurrentFileOnDir.subtract(CurrentTargetInfo.OldFiles);
                 for (const auto& Item : tmp) {
                     QFileInfo FileInfo(Item.first); //получаем информацию о файле
-                    qDebug() << "file:" << FileInfo.absoluteFilePath();
+                    qDebug() << "File:" << FileInfo.absoluteFilePath();
                     if (!CurrentTargetInfo.ignoreEmptyFile || (FileInfo.size() != 0)) {
                         AddFileToDB(FileInfo, CurrentTargetInfo.Category);
                         //добавляем файл в очередь для загрузки
                         CurrentTargetInfo.OldFiles.insert(qMakePair(FileInfo.absoluteFilePath(), TimeAccuracy(FileInfo.fileTime(QFileDevice::FileModificationTime))));
                     }
                     else {
-                        SendLogMsg(MSG_CODE::CODE_INFORMATION, "File is empty. Ignored. File name: " + FileInfo.absoluteFilePath());
+                        SendLogMsg(MSG_CODE::CODE_INFORMATION, "File is empty. Ignored.");
                     }
                 }
                 //если нужно - удаляем все файлы из директории
                 if (CurrentTargetInfo.clearDirAfterSync) {
                     qDebug() << "-->Clear directory";
-                    while (Dir.entryList().size() > 0) {
-                        Dir.remove(Dir.entryList().first());
+                    for (const auto fileNameItem: Dir.entryList()) {  //здесь нам нужна именно копия списка, т.к. мы его меняем в процессе цикла
+                        Dir.remove(fileNameItem);
                     }
+
                 }
             }
         }
